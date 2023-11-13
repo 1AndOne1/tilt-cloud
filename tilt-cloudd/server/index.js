@@ -9,7 +9,7 @@ const fs = require('fs');
 const ejs = require('ejs')
 const router = express.Router();
 const secretkey = config.get('secret')
-
+const path = require('path');
 const port = config.get('PORT')
 const {
     open
@@ -140,40 +140,29 @@ start = async () => {
 
             app.get('/download/:filename', async (req, res) => {
                 const fileName = req.params.filename;
-
-                await db.get('SELECT name FROM files WHERE name = ?', [fileName], (err, row) => {
-                    if (err) {
-                        console.error(err);
-                        return res.status(500).json({
-                            error: 'Внутренняя ошибка сервера'
-                        });
-                    } else if (!row) {
-                        return res.status(404).json({
-                            error: 'Файл не найден'
-                        });
-                    } else {
-                        const filePath = path.join(__dirname, 'uploads', row.name);
-
-                        fs.access(filePath, fs.constants.F_OK, (err) => {
-                            if (err) {
-                                console.error(err);
-                                res.status(500).json({
-                                    error: 'Внутренняя ошибка сервера'
-                                });
-                            } else {
-                                res.download(filePath, row.name, (err) => {
-                                    if (err) {
-                                        console.error(err);
-                                        res.status(500).json({
-                                            error: 'Внутренняя ошибка сервера'
-                                        });
-                                    }
-                                });
-                            }
-                        });
+            
+                try {
+                    const row = await db.get('SELECT name FROM files WHERE name = ?', [fileName]);
+                    if (!row) {
+                        return res.status(404).json({ error: 'Файл не найден' });
                     }
-                });
+            
+                    const filePath = path.join(__dirname, 'uploads', row.name);
+                    const fileExists = await fs.promises.access(filePath, fs.constants.F_OK)
+                        .then(() => true)
+                        .catch(() => false);
+            
+                    if (!fileExists) {
+                        return res.status(404).json({ error: 'Файл не найден' });
+                    }
+            
+                    res.download(filePath, row.name);
+                } catch (err) {
+                    console.error(err);
+                    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+                }
             });
+            
             app.listen(port, () => {
                 console.log("Сервер запущен на: ", port)
             })
